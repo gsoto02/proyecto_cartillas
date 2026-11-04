@@ -1,0 +1,186 @@
+CREATE SCHEMA IF NOT EXISTS auth;
+CREATE SCHEMA IF NOT EXISTS personal;
+CREATE SCHEMA IF NOT EXISTS flota;
+CREATE SCHEMA IF NOT EXISTS mantenimiento;
+CREATE SCHEMA IF NOT EXISTS cartillas;
+CREATE SCHEMA IF NOT EXISTS documentos;
+CREATE SCHEMA IF NOT EXISTS auditoria;
+
+CREATE TABLE auth.usuarios (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  nombre_usuario VARCHAR(80) NOT NULL UNIQUE,
+  correo VARCHAR(255) NOT NULL UNIQUE,
+  contrasena_hash TEXT NOT NULL,
+  activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE auth.roles (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  nombre VARCHAR(80) NOT NULL UNIQUE, descripcion TEXT, activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE auth.permisos (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  codigo VARCHAR(120) NOT NULL UNIQUE, descripcion TEXT, activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE auth.usuario_roles (
+  usuario_id BIGINT NOT NULL REFERENCES auth.usuarios(id), rol_id BIGINT NOT NULL REFERENCES auth.roles(id),
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (usuario_id, rol_id)
+);
+CREATE TABLE auth.sesiones (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, usuario_id BIGINT NOT NULL REFERENCES auth.usuarios(id),
+  token_hash TEXT NOT NULL UNIQUE, expira_en TIMESTAMPTZ NOT NULL, revocada_en TIMESTAMPTZ, creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE personal.cargos (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, nombre VARCHAR(120) NOT NULL UNIQUE, descripcion TEXT, activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE personal.especialidades (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, nombre VARCHAR(120) NOT NULL UNIQUE, descripcion TEXT, activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE personal.talleres (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, nombre VARCHAR(150) NOT NULL UNIQUE, ubicacion TEXT, activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE personal.trabajadores (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, usuario_id BIGINT UNIQUE REFERENCES auth.usuarios(id), codigo VARCHAR(60) NOT NULL UNIQUE,
+  nombres VARCHAR(120) NOT NULL, apellidos VARCHAR(120) NOT NULL, cargo_id BIGINT REFERENCES personal.cargos(id),
+  especialidad_id BIGINT REFERENCES personal.especialidades(id), taller_id BIGINT REFERENCES personal.talleres(id), activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE flota.trenes (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, codigo VARCHAR(80) NOT NULL UNIQUE, descripcion TEXT, activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE flota.coches (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, tren_id BIGINT NOT NULL REFERENCES flota.trenes(id), codigo VARCHAR(80) NOT NULL UNIQUE,
+  posicion SMALLINT, activo BOOLEAN NOT NULL DEFAULT TRUE, creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE flota.equipos (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, coche_id BIGINT REFERENCES flota.coches(id), codigo VARCHAR(100) NOT NULL UNIQUE,
+  nombre VARCHAR(150) NOT NULL, activo BOOLEAN NOT NULL DEFAULT TRUE, creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE flota.componentes (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, equipo_id BIGINT NOT NULL REFERENCES flota.equipos(id), codigo VARCHAR(100) NOT NULL UNIQUE,
+  nombre VARCHAR(150) NOT NULL, activo BOOLEAN NOT NULL DEFAULT TRUE, creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE mantenimiento.tipos_mantenimiento (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, nombre VARCHAR(100) NOT NULL UNIQUE, descripcion TEXT, activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE mantenimiento.estados (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, codigo VARCHAR(60) NOT NULL UNIQUE, nombre VARCHAR(100) NOT NULL, activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE mantenimiento.mantenimientos (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, tipo_mantenimiento_id BIGINT NOT NULL REFERENCES mantenimiento.tipos_mantenimiento(id),
+  estado_id BIGINT NOT NULL REFERENCES mantenimiento.estados(id), tren_id BIGINT REFERENCES flota.trenes(id), descripcion TEXT,
+  programado_para TIMESTAMPTZ, realizado_en TIMESTAMPTZ, activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE mantenimiento.ordenes_trabajo (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, mantenimiento_id BIGINT NOT NULL REFERENCES mantenimiento.mantenimientos(id), codigo VARCHAR(80) NOT NULL UNIQUE,
+  estado_id BIGINT NOT NULL REFERENCES mantenimiento.estados(id), descripcion TEXT, activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE mantenimiento.participantes (
+  mantenimiento_id BIGINT NOT NULL REFERENCES mantenimiento.mantenimientos(id), trabajador_id BIGINT NOT NULL REFERENCES personal.trabajadores(id),
+  rol VARCHAR(100), creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (mantenimiento_id, trabajador_id)
+);
+
+CREATE TABLE cartillas.categorias (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, nombre VARCHAR(120) NOT NULL UNIQUE, descripcion TEXT, activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE cartillas.plantillas (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, categoria_id BIGINT REFERENCES cartillas.categorias(id), codigo VARCHAR(100) NOT NULL UNIQUE,
+  nombre VARCHAR(200) NOT NULL, descripcion TEXT, activo BOOLEAN NOT NULL DEFAULT TRUE, creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE cartillas.versiones (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, plantilla_id BIGINT NOT NULL REFERENCES cartillas.plantillas(id), numero INTEGER NOT NULL,
+  estado VARCHAR(40) NOT NULL DEFAULT 'borrador', vigente_desde TIMESTAMPTZ, vigente_hasta TIMESTAMPTZ, activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (plantilla_id, numero)
+);
+CREATE TABLE cartillas.secciones (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, version_id BIGINT NOT NULL REFERENCES cartillas.versiones(id), titulo VARCHAR(200) NOT NULL,
+  orden INTEGER NOT NULL, descripcion TEXT, activo BOOLEAN NOT NULL DEFAULT TRUE, creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (version_id, orden)
+);
+CREATE TABLE cartillas.campos (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, seccion_id BIGINT NOT NULL REFERENCES cartillas.secciones(id), codigo VARCHAR(100) NOT NULL,
+  etiqueta VARCHAR(250) NOT NULL, tipo VARCHAR(50) NOT NULL, obligatorio BOOLEAN NOT NULL DEFAULT FALSE, orden INTEGER NOT NULL, configuracion JSONB NOT NULL DEFAULT '{}'::jsonb,
+  activo BOOLEAN NOT NULL DEFAULT TRUE, creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (seccion_id, codigo), UNIQUE (seccion_id, orden)
+);
+CREATE TABLE cartillas.opciones_campo (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, campo_id BIGINT NOT NULL REFERENCES cartillas.campos(id), valor VARCHAR(150) NOT NULL,
+  etiqueta VARCHAR(200) NOT NULL, orden INTEGER NOT NULL, activo BOOLEAN NOT NULL DEFAULT TRUE, creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (campo_id, valor), UNIQUE (campo_id, orden)
+);
+CREATE TABLE cartillas.registros (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, plantilla_id BIGINT NOT NULL REFERENCES cartillas.plantillas(id), version_id BIGINT NOT NULL REFERENCES cartillas.versiones(id),
+  mantenimiento_id BIGINT REFERENCES mantenimiento.mantenimientos(id), estado VARCHAR(40) NOT NULL DEFAULT 'borrador', iniciado_por_usuario_id BIGINT REFERENCES auth.usuarios(id),
+  finalizado_en TIMESTAMPTZ, activo BOOLEAN NOT NULL DEFAULT TRUE, creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE cartillas.respuestas (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, registro_id BIGINT NOT NULL REFERENCES cartillas.registros(id), campo_id BIGINT NOT NULL REFERENCES cartillas.campos(id),
+  valor JSONB NOT NULL, respondido_por_usuario_id BIGINT REFERENCES auth.usuarios(id), creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (registro_id, campo_id)
+);
+CREATE TABLE cartillas.observaciones (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, registro_id BIGINT NOT NULL REFERENCES cartillas.registros(id), campo_id BIGINT REFERENCES cartillas.campos(id),
+  detalle TEXT NOT NULL, creado_por_usuario_id BIGINT REFERENCES auth.usuarios(id), resuelta_en TIMESTAMPTZ, activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE cartillas.participantes (
+  registro_id BIGINT NOT NULL REFERENCES cartillas.registros(id), trabajador_id BIGINT NOT NULL REFERENCES personal.trabajadores(id), rol VARCHAR(100),
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (registro_id, trabajador_id)
+);
+CREATE TABLE cartillas.aprobaciones (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, registro_id BIGINT NOT NULL REFERENCES cartillas.registros(id), usuario_id BIGINT NOT NULL REFERENCES auth.usuarios(id),
+  decision VARCHAR(40) NOT NULL, comentario TEXT, decidido_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE documentos.archivos (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, nombre_original VARCHAR(255) NOT NULL, ruta TEXT NOT NULL UNIQUE, tipo_mime VARCHAR(150), tamanio_bytes BIGINT,
+  subido_por_usuario_id BIGINT REFERENCES auth.usuarios(id), activo BOOLEAN NOT NULL DEFAULT TRUE, creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE documentos.evidencias (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, registro_id BIGINT REFERENCES cartillas.registros(id), mantenimiento_id BIGINT REFERENCES mantenimiento.mantenimientos(id),
+  archivo_id BIGINT NOT NULL REFERENCES documentos.archivos(id), descripcion TEXT, creado_por_usuario_id BIGINT REFERENCES auth.usuarios(id), activo BOOLEAN NOT NULL DEFAULT TRUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CHECK (registro_id IS NOT NULL OR mantenimiento_id IS NOT NULL)
+);
+
+CREATE TABLE auditoria.eventos (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, usuario_id BIGINT REFERENCES auth.usuarios(id), accion VARCHAR(100) NOT NULL, entidad VARCHAR(100) NOT NULL,
+  entidad_id BIGINT, datos JSONB NOT NULL DEFAULT '{}'::jsonb, ocurrido_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE auditoria.cambios (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, evento_id BIGINT NOT NULL REFERENCES auditoria.eventos(id), campo VARCHAR(120) NOT NULL,
+  valor_anterior JSONB, valor_nuevo JSONB, creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_sesiones_usuario_id ON auth.sesiones(usuario_id);
+CREATE INDEX idx_trabajadores_taller_id ON personal.trabajadores(taller_id);
+CREATE INDEX idx_coches_tren_id ON flota.coches(tren_id);
+CREATE INDEX idx_equipos_coche_id ON flota.equipos(coche_id);
+CREATE INDEX idx_componentes_equipo_id ON flota.componentes(equipo_id);
+CREATE INDEX idx_mantenimientos_estado_id ON mantenimiento.mantenimientos(estado_id);
+CREATE INDEX idx_ordenes_mantenimiento_id ON mantenimiento.ordenes_trabajo(mantenimiento_id);
+CREATE INDEX idx_versiones_plantilla_id ON cartillas.versiones(plantilla_id);
+CREATE INDEX idx_secciones_version_id ON cartillas.secciones(version_id);
+CREATE INDEX idx_campos_seccion_id ON cartillas.campos(seccion_id);
+CREATE INDEX idx_registros_version_id ON cartillas.registros(version_id);
+CREATE INDEX idx_registros_mantenimiento_id ON cartillas.registros(mantenimiento_id);
+CREATE INDEX idx_respuestas_registro_id ON cartillas.respuestas(registro_id);
+CREATE INDEX idx_observaciones_registro_id ON cartillas.observaciones(registro_id);
+CREATE INDEX idx_evidencias_registro_id ON documentos.evidencias(registro_id);
+CREATE INDEX idx_eventos_entidad_ocurrido_en ON auditoria.eventos(entidad, entidad_id, ocurrido_en DESC);
