@@ -1,0 +1,64 @@
+{
+  "id": "control-apriete-01-v1",
+  "status": "borrador",
+  "templateCode": "CONTROL_DE_APRIETE_01",
+  "templateVersion": 1,
+  "sourceWorkbook": "frontend/public/plantillas-oficiales/CARTILLAS_EN_GENERAL.xlsx",
+  "sourceSha256": "4c262c3a2b707c10b1b453af7521ea0ecab874e1f5509ea11aad192091d104b9",
+  "sheetName": "CONTROL DE APRIETE 01",
+  "authorizedArea": "A1:AJ74",
+  "print": {
+    "paperSize": "A4",
+    "orientation": "landscape",
+    "scale": 40,
+    "manualRowBreaks": [52]
+  },
+  "cells": {},
+  "tables": [
+    {
+      "field": "puntos_apriete",
+      "rows": [
+        { "sourceIndex": 0, "excelRow": 12 }, { "sourceIndex": 1, "excelRow": 13 },
+        { "sourceIndex": 2, "excelRow": 14 }, { "sourceIndex": 3, "excelRow": 15 },
+        { "sourceIndex": 4, "excelRow": 17 }, { "sourceIndex": 5, "excelRow": 18 },
+        { "sourceIndex": 6, "excelRow": 19 }, { "sourceIndex": 7, "excelRow": 20 },
+        { "sourceIndex": 8, "excelRow": 22 }, { "sourceIndex": 9, "excelRow": 23 },
+        { "sourceIndex": 10, "excelRow": 24 }, { "sourceIndex": 11, "excelRow": 25 },
+        { "sourceIndex": 12, "excelRow": 27 }, { "sourceIndex": 13, "excelRow": 28 },
+        { "sourceIndex": 14, "excelRow": 29 }, { "sourceIndex": 15, "excelRow": 30 },
+        { "sourceIndex": 16, "excelRow": 32 }, { "sourceIndex": 17, "excelRow": 33 },
+        { "sourceIndex": 18, "excelRow": 34 }, { "sourceIndex": 19, "excelRow": 35 },
+        { "sourceIndex": 20, "excelRow": 37 }, { "sourceIndex": 21, "excelRow": 38 },
+        { "sourceIndex": 22, "excelRow": 39 }, { "sourceIndex": 23, "excelRow": 40 }
+      ],
+      "columns": {
+        "biela_pos_3a": { "cellTemplate": "N{row}", "type": "texto" },
+        "biela_320nm": { "cellTemplate": "O{row}", "type": "texto" },
+        "longitud_biela_mm": { "cellTemplate": "P{row}", "type": "texto" },
+        "diferir_max_4mm": { "cellTemplate": "Q{row}", "type": "texto" },
+        "medida_16_mm": { "cellTemplate": "R{row}", "type": "texto" },
+        "amortiguador_vertical_2": { "cellTemplate": "U{row}", "type": "texto" },
+        "varilla_nivelacion": { "cellTemplate": "X{row}", "type": "texto" },
+        "suspension_primaria": { "cellTemplate": "AA{row}", "type": "texto" }
+      }
+    },
+    {
+      "field": "instrumentos",
+      "rows": [
+        { "sourceIndex": 0, "excelRow": 45 }, { "sourceIndex": 1, "excelRow": 46 },
+        { "sourceIndex": 2, "excelRow": 47 }, { "sourceIndex": 3, "excelRow": 48 },
+        { "sourceIndex": 4, "excelRow": 49 }, { "sourceIndex": 5, "excelRow": 50 },
+        { "sourceIndex": 6, "excelRow": 51 }
+      ],
+      "columns": {
+        "codigo": { "cellTemplate": "A{row}", "type": "texto" },
+        "descripcion": { "cellTemplate": "F{row}", "type": "texto" },
+        "modelo": { "cellTemplate": "N{row}", "type": "texto" },
+        "fecha_calibracion": { "cellTemplate": "Q{row}", "type": "fecha" },
+        "vencimiento": { "cellTemplate": "U{row}", "type": "fecha" },
+        "observaciones": { "cellTemplate": "AA{row}", "type": "texto" }
+      }
+    }
+  ],
+  "signatures": []
+}

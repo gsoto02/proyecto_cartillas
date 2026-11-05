@@ -1,8 +1,4 @@
 import express from 'express';
-import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import { pool } from './db.js';
 import { autenticar, crearToken, esSolicitudSegura, hashToken, permitir, tokenSesion, verificarContrasena } from './auth.js';
 
@@ -12,51 +8,6 @@ app.use(esSolicitudSegura);
 
 const estadosRegistro = ['pendiente', 'en_proceso', 'revision', 'aprobado'];
 const tiposCampo = ['texto', 'numero', 'fecha', 'seleccion', 'medicion', 'tabla', 'firma'];
-
-const ejecutar = (comando: string, argumentos: string[], directorio?: string): Promise<void> => new Promise((resolver, rechazar) => {
-  const proceso = spawn(comando, argumentos, { cwd: directorio, stdio: 'ignore' });
-  proceso.once('error', rechazar);
-  proceso.once('exit', (codigo) => codigo === 0 ? resolver() : rechazar(new Error(`El comando terminó con código ${codigo}`)));
-});
-
-const textoResultado = (valor: unknown): string => {
-  if (valor === 'conforme') return '√';
-  if (valor === 'no_conforme') return 'X';
-  return typeof valor === 'string' || typeof valor === 'number' ? String(valor) : '';
-};
-
-/** Cell map audited against the hidden PRUEBAS DINAMICAS official worksheet. */
-const celdasPruebasDinamicas = (respuestas: Record<string, unknown>, campos: Array<{ id: number; codigo: string }>) => {
-  const porCodigo = Object.fromEntries(campos.map((campo) => [campo.codigo, respuestas[String(campo.id)]]));
-  const celdas: Record<string, string> = {
-    M6: textoResultado(porCodigo.tren),
-    M7: textoResultado(porCodigo.fecha),
-    A185: textoResultado(porCodigo.observaciones)
-  };
-  const tabla = (codigo: string) => Array.isArray(porCodigo[codigo]) ? porCodigo[codigo] as Array<Record<string, unknown>> : [];
-  const marcarMa = (codigo: string, filas: number[], claves = ['ma1', 'ma2']) => tabla(codigo).forEach((fila, indice) => {
-    const filaExcel = filas[indice]; if (!filaExcel) return;
-    celdas[`L${filaExcel}`] = textoResultado(fila[claves[0]] ?? fila.resultado ?? fila.evaluacion);
-    celdas[`M${filaExcel}`] = textoResultado(fila[claves[1]] ?? fila.resultado ?? fila.evaluacion);
-  });
-  marcarMa('velocidades', [20, 29, 37, 44, 45, 48, 51, 52]);
-  marcarMa('tiradores', [70, 71, 77, 78]);
-  marcarMa('hombre_muerto', [88, 89, 90, 91, 92, 93, 94]);
-  marcarMa('retencion', [101, 103]);
-  marcarMa('estacionamiento', [114, 116, 117]);
-  const deceleracion = (codigo: string, filas: number[]) => tabla(codigo).forEach((fila, indice) => {
-    const filaExcel = filas[indice]; if (!filaExcel) return;
-    celdas[`L${filaExcel}`] = textoResultado(fila.deceleracion ?? fila.valor ?? fila.ma1);
-    celdas[`M${filaExcel}`] = textoResultado(fila.ma2 ?? '');
-  });
-  deceleracion('servicio_combinado', [135, 136]);
-  deceleracion('emergencia', [153, 154]);
-  deceleracion('neumatico', [180, 181]);
-  tabla('personal').forEach((fila, indice) => {
-    const filaExcel = [189, 190, 192][indice]; if (filaExcel) celdas[`B${filaExcel}`] = textoResultado(fila.nombre ?? fila.responsable ?? '');
-  });
-  return celdas;
-};
 
 const numero = (value: string | string[]): number | null => {
   if (typeof value !== 'string') return null;
@@ -167,7 +118,9 @@ app.post('/api/cartillas/registros', autenticar, permitir('tecnico', 'responsabl
   const { plantillaId, versionId, mantenimientoId } = request.body as { plantillaId?: unknown; versionId?: unknown; mantenimientoId?: unknown };
   if (!Number.isSafeInteger(plantillaId) || !Number.isSafeInteger(versionId)) return response.status(400).json({ error: 'plantillaId y versionId son obligatorios' });
   try {
-    const version = await pool.query('SELECT id FROM cartillas.versiones WHERE id = $1 AND plantilla_id = $2 AND activo', [versionId, plantillaId]);
+    const version = await pool.query(`SELECT v.id FROM cartillas.versiones v
+      JOIN cartillas.plantillas p ON p.id = v.plantilla_id
+      WHERE v.id = $1 AND v.plantilla_id = $2 AND v.activo AND p.activo`, [versionId, plantillaId]);
     if (!version.rows[0]) return response.status(400).json({ error: 'La versión no pertenece a la plantilla' });
     const { rows } = await pool.query(`INSERT INTO cartillas.registros (plantilla_id, version_id, mantenimiento_id, estado)
       VALUES ($1, $2, $3, 'pendiente') RETURNING id, plantilla_id, version_id, estado, creado_en`, [plantillaId, versionId, Number.isSafeInteger(mantenimientoId) ? mantenimientoId : null]);
@@ -183,7 +136,9 @@ app.get('/api/cartillas/registros/:registroId', autenticar, permitir('tecnico', 
       COALESCE((SELECT jsonb_object_agg(campo_id, valor) FROM cartillas.respuestas WHERE registro_id = r.id), '{}'::jsonb) AS respuestas,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('id', id, 'campoId', campo_id, 'detalle', detalle, 'resueltaEn', resuelta_en, 'creadoEn', creado_en) ORDER BY creado_en) FROM cartillas.observaciones WHERE registro_id = r.id AND activo), '[]'::jsonb) AS observaciones,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('id', e.id, 'archivoId', e.archivo_id, 'nombre', a.nombre_original, 'ruta', a.ruta, 'descripcion', e.descripcion) ORDER BY e.creado_en) FROM documentos.evidencias e JOIN documentos.archivos a ON a.id = e.archivo_id WHERE e.registro_id = r.id AND e.activo), '[]'::jsonb) AS evidencias
-      FROM cartillas.registros r WHERE r.id = $1 AND r.activo`, [registroId]);
+      FROM cartillas.registros r
+      JOIN cartillas.plantillas p ON p.id = r.plantilla_id AND p.activo
+      WHERE r.id = $1 AND r.activo`, [registroId]);
     if (!registro.rows[0]) return response.status(404).json({ error: 'Registro no encontrado' });
     response.json(registro.rows[0]);
   } catch { response.status(503).json({ error: 'database unavailable' }); }
@@ -197,34 +152,9 @@ app.get('/api/cartillas/registros/:registroId/exportar/:formato', autenticar, pe
     const registro = await pool.query(`SELECT p.codigo, COALESCE(jsonb_object_agg(rp.campo_id, rp.valor) FILTER (WHERE rp.id IS NOT NULL), '{}'::jsonb) AS respuestas
       FROM cartillas.registros r JOIN cartillas.plantillas p ON p.id = r.plantilla_id
       LEFT JOIN cartillas.respuestas rp ON rp.registro_id = r.id
-      WHERE r.id = $1 AND r.activo GROUP BY p.codigo`, [registroId]);
+      WHERE r.id = $1 AND r.activo AND p.activo GROUP BY p.codigo`, [registroId]);
     if (!registro.rows[0]) return response.status(404).json({ error: 'Registro no encontrado' });
-    if (registro.rows[0].codigo !== 'PRUEBAS_DINAMICAS') return response.status(409).json({ error: 'La exportación oficial aún se está validando para esta cartilla.' });
-    const campos = await pool.query(`SELECT f.id, f.codigo FROM cartillas.registros r JOIN cartillas.secciones s ON s.version_id = r.version_id
-      JOIN cartillas.campos f ON f.seccion_id = s.id AND f.activo WHERE r.id = $1 ORDER BY s.orden, f.orden`, [registroId]);
-    const temporal = await mkdtemp(path.join(os.tmpdir(), 'unna-cartilla-'));
-    const valores = path.join(temporal, 'valores.json');
-    const excelCompleto = path.join(temporal, 'PRUEBAS_DINAMICAS.xlsx');
-    const fuente = path.resolve(process.cwd(), '../frontend/public/plantillas-oficiales/CARTILLAS_EN_GENERAL.xlsx');
-    const script = path.resolve(process.cwd(), 'src/export-official.py');
-    const limpiar = () => rm(temporal, { recursive: true, force: true }).catch(() => undefined);
-    try {
-      await writeFile(valores, JSON.stringify({ cells: celdasPruebasDinamicas(registro.rows[0].respuestas, campos.rows), solo_hoja: false }), 'utf8');
-      await ejecutar('python3', [script, fuente, excelCompleto, 'PRUEBAS DINAMICAS', valores]);
-      if (formato === 'xlsx') {
-        return response.download(excelCompleto, 'PRUEBAS_DINAMICAS_formato_oficial.xlsx', (error) => { limpiar(); if (error && !response.headersSent) response.status(500).end(); });
-      }
-      const soffice = '/Applications/LibreOffice.app/Contents/MacOS/soffice';
-      await ejecutar(soffice, [`-env:UserInstallation=file://${path.join(temporal, 'perfil-libreoffice')}`, '--headless', '--convert-to', 'pdf', '--outdir', temporal, excelCompleto], temporal);
-      const pdfCompleto = path.join(temporal, 'PRUEBAS_DINAMICAS.pdf');
-      await ejecutar('pdfseparate', [pdfCompleto, path.join(temporal, 'pagina-%d.pdf')], temporal);
-      const pdf = path.join(temporal, 'PRUEBAS_DINAMICAS_formato_oficial.pdf');
-      await ejecutar('pdfunite', [path.join(temporal, 'pagina-23.pdf'), path.join(temporal, 'pagina-24.pdf'), path.join(temporal, 'pagina-25.pdf'), path.join(temporal, 'pagina-26.pdf'), pdf], temporal);
-      await readFile(pdf);
-      return response.download(pdf, 'PRUEBAS_DINAMICAS_formato_oficial.pdf', (error) => { limpiar(); if (error && !response.headersSent) response.status(500).end(); });
-    } catch (error) {
-      limpiar(); throw error;
-    }
+    return response.status(409).json({ error: 'La exportación oficial aún se está validando para esta cartilla.' });
   } catch {
     response.status(503).json({ error: 'No se pudo preparar la exportación oficial.' });
   }
@@ -236,10 +166,13 @@ app.put('/api/cartillas/registros/:registroId/respuestas', autenticar, permitir(
   if (!registroId || !Array.isArray(respuestas)) return response.status(400).json({ error: 'Respuestas inválidas' });
   try {
     const campos = await pool.query(`SELECT f.id, f.tipo, f.configuracion, COALESCE(array_agg(o.valor) FILTER (WHERE o.id IS NOT NULL), '{}') AS opciones
-      FROM cartillas.registros r JOIN cartillas.secciones s ON s.version_id = r.version_id JOIN cartillas.campos f ON f.seccion_id = s.id
+      FROM cartillas.registros r JOIN cartillas.plantillas p ON p.id = r.plantilla_id AND p.activo
+      JOIN cartillas.secciones s ON s.version_id = r.version_id JOIN cartillas.campos f ON f.seccion_id = s.id
       LEFT JOIN cartillas.opciones_campo o ON o.campo_id = f.id AND o.activo WHERE r.id = $1 AND f.activo GROUP BY f.id`, [registroId]);
     if (!campos.rows.length) {
-      const existe = await pool.query('SELECT 1 FROM cartillas.registros WHERE id = $1 AND activo', [registroId]);
+      const existe = await pool.query(`SELECT 1 FROM cartillas.registros r
+        JOIN cartillas.plantillas p ON p.id = r.plantilla_id AND p.activo
+        WHERE r.id = $1 AND r.activo`, [registroId]);
       if (!existe.rows[0]) return response.status(404).json({ error: 'Registro no encontrado' });
     }
     const permitidos = new Map(campos.rows.map((campo) => [Number(campo.id), campo]));
@@ -273,11 +206,13 @@ app.patch('/api/cartillas/registros/:registroId/estado', autenticar, permitir('t
     if (estado === 'revision' || estado === 'aprobado') {
       const { rows } = await pool.query(`SELECT f.etiqueta FROM cartillas.registros r JOIN cartillas.secciones s ON s.version_id = r.version_id
         JOIN cartillas.campos f ON f.seccion_id = s.id AND f.activo LEFT JOIN cartillas.respuestas rp ON rp.registro_id = r.id AND rp.campo_id = f.id
+        JOIN cartillas.plantillas p ON p.id = r.plantilla_id AND p.activo
         WHERE r.id = $1 AND f.obligatorio AND rp.id IS NULL`, [registroId]);
       if (rows.length) return response.status(422).json({ error: 'Faltan campos obligatorios', campos: rows.map((row) => row.etiqueta) });
     }
-    const { rows } = await pool.query(`UPDATE cartillas.registros SET estado = $2, finalizado_en = CASE WHEN $2::varchar = 'aprobado' THEN CURRENT_TIMESTAMP ELSE finalizado_en END,
-      actualizado_en = CURRENT_TIMESTAMP WHERE id = $1 AND activo RETURNING id, estado, actualizado_en`, [registroId, estado]);
+    const { rows } = await pool.query(`UPDATE cartillas.registros r SET estado = $2, finalizado_en = CASE WHEN $2::varchar = 'aprobado' THEN CURRENT_TIMESTAMP ELSE finalizado_en END,
+      actualizado_en = CURRENT_TIMESTAMP FROM cartillas.plantillas p
+      WHERE r.id = $1 AND r.activo AND p.id = r.plantilla_id AND p.activo RETURNING r.id, r.estado, r.actualizado_en`, [registroId, estado]);
     if (!rows[0]) return response.status(404).json({ error: 'Registro no encontrado' });
     response.json(rows[0]);
   } catch { response.status(503).json({ error: 'database unavailable' }); }
@@ -289,7 +224,8 @@ app.post('/api/cartillas/registros/:registroId/observaciones', autenticar, permi
   if (!registroId || typeof detalle !== 'string' || !detalle.trim()) return response.status(400).json({ error: 'Observación inválida' });
   try {
     const { rows } = await pool.query(`INSERT INTO cartillas.observaciones (registro_id, campo_id, detalle)
-      SELECT r.id, $2, $3 FROM cartillas.registros r WHERE r.id = $1 AND r.activo RETURNING id, registro_id, campo_id, detalle, creado_en`, [registroId, Number.isSafeInteger(campoId) ? campoId : null, detalle.trim()]);
+      SELECT r.id, $2, $3 FROM cartillas.registros r JOIN cartillas.plantillas p ON p.id = r.plantilla_id AND p.activo
+      WHERE r.id = $1 AND r.activo RETURNING id, registro_id, campo_id, detalle, creado_en`, [registroId, Number.isSafeInteger(campoId) ? campoId : null, detalle.trim()]);
     if (!rows[0]) return response.status(404).json({ error: 'Registro no encontrado' });
     response.status(201).json(rows[0]);
   } catch { response.status(503).json({ error: 'database unavailable' }); }
@@ -302,7 +238,9 @@ app.post('/api/cartillas/registros/:registroId/evidencias', autenticar, permitir
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const registro = await client.query('SELECT id FROM cartillas.registros WHERE id = $1 AND activo', [registroId]);
+    const registro = await client.query(`SELECT r.id FROM cartillas.registros r
+      JOIN cartillas.plantillas p ON p.id = r.plantilla_id AND p.activo
+      WHERE r.id = $1 AND r.activo`, [registroId]);
     if (!registro.rows[0]) { await client.query('ROLLBACK'); return response.status(404).json({ error: 'Registro no encontrado' }); }
     const archivo = await client.query(`INSERT INTO documentos.archivos (nombre_original, ruta, tipo_mime, tamanio_bytes) VALUES ($1, $2, $3, $4)
       ON CONFLICT (ruta) DO UPDATE SET nombre_original = EXCLUDED.nombre_original, tipo_mime = EXCLUDED.tipo_mime, tamanio_bytes = EXCLUDED.tamanio_bytes, actualizado_en = CURRENT_TIMESTAMP RETURNING id`, [nombreOriginal, ruta, typeof tipoMime === 'string' ? tipoMime : null, typeof tamanioBytes === 'number' ? tamanioBytes : null]);

@@ -29,7 +29,7 @@ function CartillasPage() {
   const [error, setError] = React.useState(false);
   const [busqueda, setBusqueda] = React.useState('');
   const [categoria, setCategoria] = React.useState('todas');
-  const [aviso, setAviso] = React.useState('');
+  const aviso = '';
 
   React.useEffect(() => {
     fetch('/api/cartillas/plantillas')
@@ -55,6 +55,9 @@ function CartillasPage() {
   const porCategoria = categorias
     .map((nombre) => ({ nombre, plantillas: visibles.filter((plantilla) => plantilla.categoria === nombre) }))
     .filter((grupo) => grupo.plantillas.length > 0);
+  const plantillasDisponibles = new Set(plantillas.map((plantilla) => plantilla.id)).size;
+  const versionesActivas = plantillas.length;
+  const categoriasDisponibles = categorias.length;
 
   return (
     <div className="app-shell">
@@ -70,9 +73,13 @@ function CartillasPage() {
         <div className="breadcrumbs">UNNA <span>›</span> Mantenimiento <span>›</span> <b>Catálogo de cartillas</b></div>
         <header className="page-header">
           <div className="title-group"><span className="title-icon">▤</span><div><p className="eyebrow">Mantenimiento</p><h1>Catálogo de cartillas</h1><p className="subtitle">Gestiona y selecciona las plantillas de cartillas de mantenimiento.</p></div></div>
-          <button className="new-button" type="button" onClick={() => setAviso('La creación de nuevas cartillas estará disponible próximamente.')}>＋ Nueva cartilla</button>
+          <a className="new-button" href="#catalogo">Explorar cartillas <span>↓</span></a>
         </header>
-        <section className="filters" aria-label="Filtros de cartillas">
+        <section className="operation-overview" aria-label="Resumen operativo">
+          <div className="operation-copy"><span className="live-dot" aria-hidden="true" /> <b>Centro de control operativo</b><p>Consulta formatos técnicos vigentes y registra cada intervención con trazabilidad.</p></div>
+          <div className="operation-stats"><div><strong>{plantillasDisponibles}</strong><span>cartillas disponibles</span></div><div><strong>{versionesActivas}</strong><span>versiones activas</span></div><div><strong>{categoriasDisponibles}</strong><span>especialidades técnicas</span></div></div>
+        </section>
+        <section className="filters" id="catalogo" aria-label="Filtros de cartillas">
           <label className="search"><span className="search-icon">⌕</span><span className="sr-only">Buscar cartilla</span><input value={busqueda} onChange={(event) => setBusqueda(event.target.value)} placeholder="Buscar por nombre, código o palabra clave…" /></label>
           <label className="category-filter"><span className="sr-only">Categoría</span><select value={categoria} onChange={(event) => setCategoria(event.target.value)}><option value="todas">Todas las categorías</option>{categorias.map((nombre) => <option key={nombre} value={nombre}>{nombre}</option>)}</select></label>
         </section>
@@ -86,7 +93,7 @@ function CartillasPage() {
             <h2 id={`categoria-${grupo.nombre}`}>{grupo.nombre}<span>{grupo.plantillas.length}</span></h2>
             <div className="cards">
               {grupo.plantillas.map((plantilla) => <article className="card" key={plantilla.version_id}>
-                <div><div className="card-code"><span>▣</span><p className="code">{plantilla.codigo}</p><button aria-label={`Opciones de ${plantilla.nombre}`}>•••</button></div><h3>{plantilla.nombre}</h3><p className="version">Versión {plantilla.version}</p></div>
+                <div><div className="card-code"><span>▣</span><p className="code">{plantilla.codigo}</p></div><h3>{plantilla.nombre}</h3><p className="version">Versión {plantilla.version}</p></div>
                 <div className="card-actions"><span className={`status ${plantilla.estado}`}>{estadoEtiqueta[plantilla.estado] ?? plantilla.estado}</span><a className="open-button" href={`/cartillas/${plantilla.id}/versiones/${plantilla.version_id}`}>Abrir <span>→</span></a></div>
               </article>)}
             </div>

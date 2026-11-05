@@ -6,6 +6,7 @@
     "dev": "tsx watch src/server.ts",
     "bootstrap:admin": "tsx src/bootstrap-admin.ts",
     "build": "tsc",
+    "test": "tsx --test src/official-export/*.test.ts && python3 src/official-export/ooxml_writer_test.py",
     "start": "node dist/server.js"
   },
   "dependencies": {
