@@ -4,6 +4,7 @@ import './styles.css';
 import { FormularioPage } from './FormularioPage';
 import { MantenimientoCartillasPage } from './MantenimientoCartillasPage';
 import { LoginPage } from './LoginPage';
+import { LogoutButton } from './LogoutButton';
 import linea1Logo from '../../linea1logo.png';
 
 type Plantilla = {
@@ -67,7 +68,7 @@ function CartillasPage() {
           <p className="nav-label">Mantenimiento</p>
           <a href="/cartillas" className="nav-link active"><span>▣</span> Cartillas</a>
         </nav>
-        <div className="sidebar-footer"><span className="avatar">AD</span><span><b>Administrador</b><small>Sesión activa</small></span></div>
+        <div className="sidebar-footer"><span className="avatar">AD</span><span><b>Administrador</b><small>Sesión activa</small></span><LogoutButton /></div>
       </aside>
       <main className="content">
         <div className="breadcrumbs">UNNA <span>›</span> Mantenimiento <span>›</span> <b>Catálogo de cartillas</b></div>
