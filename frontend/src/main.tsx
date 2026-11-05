@@ -4,7 +4,7 @@ import './styles.css';
 import { FormularioPage } from './FormularioPage';
 import { MantenimientoCartillasPage } from './MantenimientoCartillasPage';
 import { LoginPage } from './LoginPage';
-import { LogoutButton } from './LogoutButton';
+import { SessionProfile } from './SessionProfile';
 import linea1Logo from '../../linea1logo.png';
 
 type Plantilla = {
@@ -68,7 +68,7 @@ function CartillasPage() {
           <p className="nav-label">Mantenimiento</p>
           <a href="/cartillas" className="nav-link active"><span>▣</span> Cartillas</a>
         </nav>
-        <div className="sidebar-footer"><span className="avatar">AD</span><span><b>Administrador</b><small>Sesión activa</small></span><LogoutButton /></div>
+        <SessionProfile />
       </aside>
       <main className="content">
         <div className="breadcrumbs">UNNA <span>›</span> Mantenimiento <span>›</span> <b>Catálogo de cartillas</b></div>
@@ -80,6 +80,11 @@ function CartillasPage() {
           <div className="operation-copy"><span className="live-dot" aria-hidden="true" /> <b>Centro de control operativo</b><p>Consulta formatos técnicos vigentes y registra cada intervención con trazabilidad.</p></div>
           <div className="operation-stats"><div><strong>{plantillasDisponibles}</strong><span>cartillas disponibles</span></div><div><strong>{versionesActivas}</strong><span>versiones activas</span></div><div><strong>{categoriasDisponibles}</strong><span>especialidades técnicas</span></div></div>
         </section>
+        {!cargando && !error && <section className="workflow-panel" aria-label="Guía de trabajo">
+          <div><p className="eyebrow">Flujo de trabajo</p><h2>Completa una cartilla con trazabilidad</h2><p>Los datos se guardan como borrador y pueden retomarse mientras la cartilla no haya sido enviada a revisión.</p></div>
+          <ol className="workflow-steps"><li><b>1</b><span><strong>Selecciona</strong><small>Abre una cartilla disponible.</small></span></li><li><b>2</b><span><strong>Registra</strong><small>Completa los campos técnicos.</small></span></li><li><b>3</b><span><strong>Guarda</strong><small>Conserva el borrador.</small></span></li><li><b>4</b><span><strong>Revisa</strong><small>Envía al completar obligatorios.</small></span></li></ol>
+          <p className="catalog-alert" role="status"><span>●</span> Catálogo sincronizado: {plantillasDisponibles} cartillas autorizadas para operación.</p>
+        </section>}
         <section className="filters" id="catalogo" aria-label="Filtros de cartillas">
           <label className="search"><span className="search-icon">⌕</span><span className="sr-only">Buscar cartilla</span><input value={busqueda} onChange={(event) => setBusqueda(event.target.value)} placeholder="Buscar por nombre, código o palabra clave…" /></label>
           <label className="category-filter"><span className="sr-only">Categoría</span><select value={categoria} onChange={(event) => setCategoria(event.target.value)}><option value="todas">Todas las categorías</option>{categorias.map((nombre) => <option key={nombre} value={nombre}>{nombre}</option>)}</select></label>

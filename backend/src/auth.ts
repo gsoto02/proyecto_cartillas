@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import { pool } from './db.js';
 
-export type UsuarioAutenticado = { id: number; roles: string[] };
+export type UsuarioAutenticado = { id: number; nombreUsuario: string; roles: string[] };
 declare global { namespace Express { interface Request { usuario?: UsuarioAutenticado } } }
 
 const cookie = (request: Request, name: string) => request.headers.cookie?.split(';').map((part) => part.trim()).find((part) => part.startsWith(`${name}=`))?.slice(name.length + 1);
@@ -13,11 +13,11 @@ export async function autenticar(request: Request, response: Response, next: Nex
   const token = cookie(request, 'unna_session');
   if (!token) return response.status(401).json({ error: 'Autenticación requerida' });
   try {
-    const { rows } = await pool.query(`SELECT u.id, array_agg(r.nombre) FILTER (WHERE r.nombre IS NOT NULL) AS roles
+    const { rows } = await pool.query(`SELECT u.id, u.nombre_usuario, array_agg(r.nombre) FILTER (WHERE r.nombre IS NOT NULL) AS roles
       FROM auth.sesiones s JOIN auth.usuarios u ON u.id=s.usuario_id LEFT JOIN auth.usuario_roles ur ON ur.usuario_id=u.id LEFT JOIN auth.roles r ON r.id=ur.rol_id
       WHERE s.token_hash=$1 AND s.revocada_en IS NULL AND s.expira_en>CURRENT_TIMESTAMP AND u.activo GROUP BY u.id`, [hash(token)]);
     if (!rows[0]) return response.status(401).json({ error: 'Sesión inválida o expirada' });
-    request.usuario = { id: Number(rows[0].id), roles: rows[0].roles ?? [] }; next();
+    request.usuario = { id: Number(rows[0].id), nombreUsuario: rows[0].nombre_usuario, roles: rows[0].roles ?? [] }; next();
   } catch { response.status(503).json({ error: 'database unavailable' }); }
 }
 

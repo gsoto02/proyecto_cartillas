@@ -64,6 +64,16 @@ export function FormularioPage({ plantillaId, versionId }: { plantillaId: number
   };
   const enviarRevision = async () => {
     if (!registroId) return;
+    const faltantes = definicion?.secciones.flatMap((seccion) => seccion.campos)
+      .filter((campo) => campo.obligatorio)
+      .filter((campo) => {
+        const valor = valores[campo.id];
+        return Array.isArray(valor) ? !valor.some((fila) => Object.values(fila).some(Boolean)) : !valor;
+      }) ?? [];
+    if (faltantes.length) {
+      setMensaje(`Faltan ${faltantes.length} campo(s) obligatorio(s): ${faltantes.slice(0, 3).map((campo) => campo.etiqueta).join(', ')}${faltantes.length > 3 ? '…' : ''}`);
+      return;
+    }
     if (!await guardar()) return;
     const resultado = await fetch(`/api/cartillas/registros/${registroId}/estado`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ estado: 'revision' }) });
     setMensaje(resultado.ok ? 'Cartilla enviada a revisión.' : 'No se pudo enviar a revisión.');
@@ -71,7 +81,7 @@ export function FormularioPage({ plantillaId, versionId }: { plantillaId: number
   const control = (campo: Campo) => {
     const cambiar = (valor: unknown) => { setValores((actual) => ({ ...actual, [campo.id]: valor })); setCambiosSinGuardar(true); };
     if (campo.tipo === 'seleccion') return <select value={String(valores[campo.id] ?? '')} onChange={(e) => cambiar(e.target.value)}><option value="">Seleccione</option>{campo.opciones.map((o) => <option key={o.valor} value={o.valor}>{o.etiqueta}</option>)}</select>;
-    if (campo.tipo === 'medicion') return <div className="measurement"><input type="number" onChange={(e) => cambiar({ valor: Number(e.target.value), unidad: campo.configuracion?.unidad ?? '' })} /><span>{campo.configuracion?.unidad ?? 'unidad'}</span></div>;
+    if (campo.tipo === 'medicion') { const medicion = valores[campo.id]; return <div className="measurement"><input type="number" value={typeof medicion === 'object' && medicion && 'valor' in medicion ? String((medicion as { valor?: unknown }).valor ?? '') : ''} onChange={(e) => cambiar({ valor: Number(e.target.value), unidad: campo.configuracion?.unidad ?? '' })} /><span>{campo.configuracion?.unidad ?? 'unidad'}</span></div>; }
     if (campo.tipo === 'firma') { const firma = valores[campo.id]; return <FirmaCanvas value={typeof firma === 'string' ? firma : ''} onChange={cambiar} />; }
     if (campo.tipo === 'tabla') {
       const columnas = campo.configuracion?.columnas ?? [];
@@ -83,7 +93,7 @@ export function FormularioPage({ plantillaId, versionId }: { plantillaId: number
       return <div className="repeat-table"><table><thead><tr>{columnasVisibles.map((columna) => <th key={columna.codigo}>{columna.etiqueta}</th>)}</tr></thead><tbody>{filas.map((fila, indice) => <tr key={indice}>{columnasVisibles.map((columna) => <td key={columna.codigo}>{columna.codigo === 'referencia' ? <span className="technical-reference">{fila.referencia ?? fila.criterio ?? fila.condicion ?? '—'}</span> : columna.tipo === 'firma' ? <FirmaCanvas value={typeof fila[columna.codigo] === 'string' ? fila[columna.codigo] : ''} onChange={(firma) => actualizar(indice, columna.codigo, firma)} /> : columna.tipo === 'seleccion' ? <select value={fila[columna.codigo] ?? ''} onChange={(e) => actualizar(indice, columna.codigo, e.target.value)}><option value="" />{columna.opciones?.map((opcion) => <option key={opcion.valor} value={opcion.valor}>{opcion.etiqueta}</option>)}</select> : <input type={columna.tipo === 'numero' ? 'number' : 'text'} step={columna.tipo === 'numero' ? 'any' : undefined} value={fila[columna.codigo] ?? ''} readOnly={columna.codigo === 'responsable' || columna.codigo === 'taller'} onChange={(e) => actualizar(indice, columna.codigo, e.target.value)} />}</td>)}</tr>)}</tbody></table>{permiteAgregar && <button type="button" onClick={() => cambiar([...filas, {}])}>Agregar fila</button>}</div>;
     }
     if (campo.tipo === 'texto' && campo.configuracion?.multilinea) return <textarea value={String(valores[campo.id] ?? '')} onChange={(e) => cambiar(e.target.value)} />;
-    return <input type={campo.tipo === 'numero' ? 'number' : campo.tipo === 'fecha' ? 'date' : 'text'} onChange={(e) => cambiar(campo.tipo === 'numero' ? Number(e.target.value) : e.target.value)} />;
+    return <input type={campo.tipo === 'numero' ? 'number' : campo.tipo === 'fecha' ? 'date' : 'text'} value={String(valores[campo.id] ?? '')} onChange={(e) => cambiar(campo.tipo === 'numero' ? Number(e.target.value) : e.target.value)} />;
   };
   const datosCampo = (campo: Campo) => valores[campo.id] ?? '';
   if (!definicion) return <main className="content"><p className="state">{mensaje || 'Abriendo cartilla…'}</p></main>;
