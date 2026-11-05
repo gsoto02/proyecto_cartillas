@@ -28,7 +28,12 @@ export const esSolicitudSegura = (request: Request, response: Response, next: Ne
   if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return next();
   const origin = request.headers.origin;
   const host = request.headers.host;
-  if (origin && host && new URL(origin).host !== host) return response.status(403).json({ error: 'Origen no permitido' });
+  if (origin && host) {
+    const origen = new URL(origin);
+    const esMismoOrigen = origen.host === host;
+    const esOrigenLocalDeDesarrollo = process.env.NODE_ENV !== 'production' && ['localhost', '127.0.0.1', '::1'].includes(origen.hostname);
+    if (!esMismoOrigen && !esOrigenLocalDeDesarrollo) return response.status(403).json({ error: 'Origen no permitido' });
+  }
   next();
 };
 

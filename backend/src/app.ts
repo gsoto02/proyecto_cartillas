@@ -1,4 +1,8 @@
 import express from 'express';
+import { spawn } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { pool } from './db.js';
 import { autenticar, crearToken, esSolicitudSegura, hashToken, permitir, tokenSesion, verificarContrasena } from './auth.js';
 
@@ -8,6 +12,51 @@ app.use(esSolicitudSegura);
 
 const estadosRegistro = ['pendiente', 'en_proceso', 'revision', 'aprobado'];
 const tiposCampo = ['texto', 'numero', 'fecha', 'seleccion', 'medicion', 'tabla', 'firma'];
+
+const ejecutar = (comando: string, argumentos: string[], directorio?: string): Promise<void> => new Promise((resolver, rechazar) => {
+  const proceso = spawn(comando, argumentos, { cwd: directorio, stdio: 'ignore' });
+  proceso.once('error', rechazar);
+  proceso.once('exit', (codigo) => codigo === 0 ? resolver() : rechazar(new Error(`El comando terminó con código ${codigo}`)));
+});
+
+const textoResultado = (valor: unknown): string => {
+  if (valor === 'conforme') return '√';
+  if (valor === 'no_conforme') return 'X';
+  return typeof valor === 'string' || typeof valor === 'number' ? String(valor) : '';
+};
+
+/** Cell map audited against the hidden PRUEBAS DINAMICAS official worksheet. */
+const celdasPruebasDinamicas = (respuestas: Record<string, unknown>, campos: Array<{ id: number; codigo: string }>) => {
+  const porCodigo = Object.fromEntries(campos.map((campo) => [campo.codigo, respuestas[String(campo.id)]]));
+  const celdas: Record<string, string> = {
+    M6: textoResultado(porCodigo.tren),
+    M7: textoResultado(porCodigo.fecha),
+    A185: textoResultado(porCodigo.observaciones)
+  };
+  const tabla = (codigo: string) => Array.isArray(porCodigo[codigo]) ? porCodigo[codigo] as Array<Record<string, unknown>> : [];
+  const marcarMa = (codigo: string, filas: number[], claves = ['ma1', 'ma2']) => tabla(codigo).forEach((fila, indice) => {
+    const filaExcel = filas[indice]; if (!filaExcel) return;
+    celdas[`L${filaExcel}`] = textoResultado(fila[claves[0]] ?? fila.resultado ?? fila.evaluacion);
+    celdas[`M${filaExcel}`] = textoResultado(fila[claves[1]] ?? fila.resultado ?? fila.evaluacion);
+  });
+  marcarMa('velocidades', [20, 29, 37, 44, 45, 48, 51, 52]);
+  marcarMa('tiradores', [70, 71, 77, 78]);
+  marcarMa('hombre_muerto', [88, 89, 90, 91, 92, 93, 94]);
+  marcarMa('retencion', [101, 103]);
+  marcarMa('estacionamiento', [114, 116, 117]);
+  const deceleracion = (codigo: string, filas: number[]) => tabla(codigo).forEach((fila, indice) => {
+    const filaExcel = filas[indice]; if (!filaExcel) return;
+    celdas[`L${filaExcel}`] = textoResultado(fila.deceleracion ?? fila.valor ?? fila.ma1);
+    celdas[`M${filaExcel}`] = textoResultado(fila.ma2 ?? '');
+  });
+  deceleracion('servicio_combinado', [135, 136]);
+  deceleracion('emergencia', [153, 154]);
+  deceleracion('neumatico', [180, 181]);
+  tabla('personal').forEach((fila, indice) => {
+    const filaExcel = [189, 190, 192][indice]; if (filaExcel) celdas[`B${filaExcel}`] = textoResultado(fila.nombre ?? fila.responsable ?? '');
+  });
+  return celdas;
+};
 
 const numero = (value: string | string[]): number | null => {
   if (typeof value !== 'string') return null;
@@ -93,6 +142,7 @@ app.get('/api/cartillas/plantillas/:plantillaId/versiones/:versionId', autentica
   try {
     const { rows } = await pool.query(`
       SELECT p.id, p.codigo, p.nombre, v.id AS version_id, v.numero, v.estado,
+             v.documento_configuracion AS documento_configuracion,
              COALESCE(jsonb_agg(jsonb_build_object(
                'id', s.id, 'titulo', s.titulo, 'descripcion', s.descripcion, 'orden', s.orden,
                'campos', COALESCE((SELECT jsonb_agg(jsonb_build_object(
@@ -139,12 +189,53 @@ app.get('/api/cartillas/registros/:registroId', autenticar, permitir('tecnico', 
   } catch { response.status(503).json({ error: 'database unavailable' }); }
 });
 
+app.get('/api/cartillas/registros/:registroId/exportar/:formato', autenticar, permitir('tecnico', 'responsable', 'supervisor', 'administrador'), async (request, response) => {
+  const registroId = numero(request.params.registroId);
+  const formato = request.params.formato;
+  if (!registroId || typeof formato !== 'string' || !['xlsx', 'pdf'].includes(formato)) return response.status(400).json({ error: 'Solicitud de exportación inválida' });
+  try {
+    const registro = await pool.query(`SELECT p.codigo, COALESCE(jsonb_object_agg(rp.campo_id, rp.valor) FILTER (WHERE rp.id IS NOT NULL), '{}'::jsonb) AS respuestas
+      FROM cartillas.registros r JOIN cartillas.plantillas p ON p.id = r.plantilla_id
+      LEFT JOIN cartillas.respuestas rp ON rp.registro_id = r.id
+      WHERE r.id = $1 AND r.activo GROUP BY p.codigo`, [registroId]);
+    if (!registro.rows[0]) return response.status(404).json({ error: 'Registro no encontrado' });
+    if (registro.rows[0].codigo !== 'PRUEBAS_DINAMICAS') return response.status(409).json({ error: 'La exportación oficial aún se está validando para esta cartilla.' });
+    const campos = await pool.query(`SELECT f.id, f.codigo FROM cartillas.registros r JOIN cartillas.secciones s ON s.version_id = r.version_id
+      JOIN cartillas.campos f ON f.seccion_id = s.id AND f.activo WHERE r.id = $1 ORDER BY s.orden, f.orden`, [registroId]);
+    const temporal = await mkdtemp(path.join(os.tmpdir(), 'unna-cartilla-'));
+    const valores = path.join(temporal, 'valores.json');
+    const excelCompleto = path.join(temporal, 'PRUEBAS_DINAMICAS.xlsx');
+    const fuente = path.resolve(process.cwd(), '../frontend/public/plantillas-oficiales/CARTILLAS_EN_GENERAL.xlsx');
+    const script = path.resolve(process.cwd(), 'src/export-official.py');
+    const limpiar = () => rm(temporal, { recursive: true, force: true }).catch(() => undefined);
+    try {
+      await writeFile(valores, JSON.stringify({ cells: celdasPruebasDinamicas(registro.rows[0].respuestas, campos.rows), solo_hoja: false }), 'utf8');
+      await ejecutar('python3', [script, fuente, excelCompleto, 'PRUEBAS DINAMICAS', valores]);
+      if (formato === 'xlsx') {
+        return response.download(excelCompleto, 'PRUEBAS_DINAMICAS_formato_oficial.xlsx', (error) => { limpiar(); if (error && !response.headersSent) response.status(500).end(); });
+      }
+      const soffice = '/Applications/LibreOffice.app/Contents/MacOS/soffice';
+      await ejecutar(soffice, [`-env:UserInstallation=file://${path.join(temporal, 'perfil-libreoffice')}`, '--headless', '--convert-to', 'pdf', '--outdir', temporal, excelCompleto], temporal);
+      const pdfCompleto = path.join(temporal, 'PRUEBAS_DINAMICAS.pdf');
+      await ejecutar('pdfseparate', [pdfCompleto, path.join(temporal, 'pagina-%d.pdf')], temporal);
+      const pdf = path.join(temporal, 'PRUEBAS_DINAMICAS_formato_oficial.pdf');
+      await ejecutar('pdfunite', [path.join(temporal, 'pagina-23.pdf'), path.join(temporal, 'pagina-24.pdf'), path.join(temporal, 'pagina-25.pdf'), path.join(temporal, 'pagina-26.pdf'), pdf], temporal);
+      await readFile(pdf);
+      return response.download(pdf, 'PRUEBAS_DINAMICAS_formato_oficial.pdf', (error) => { limpiar(); if (error && !response.headersSent) response.status(500).end(); });
+    } catch (error) {
+      limpiar(); throw error;
+    }
+  } catch {
+    response.status(503).json({ error: 'No se pudo preparar la exportación oficial.' });
+  }
+});
+
 app.put('/api/cartillas/registros/:registroId/respuestas', autenticar, permitir('tecnico', 'responsable', 'administrador'), async (request, response) => {
   const registroId = numero(request.params.registroId);
   const respuestas = (request.body as { respuestas?: unknown }).respuestas;
   if (!registroId || !Array.isArray(respuestas)) return response.status(400).json({ error: 'Respuestas inválidas' });
   try {
-    const campos = await pool.query(`SELECT f.id, f.tipo, COALESCE(array_agg(o.valor) FILTER (WHERE o.id IS NOT NULL), '{}') AS opciones
+    const campos = await pool.query(`SELECT f.id, f.tipo, f.configuracion, COALESCE(array_agg(o.valor) FILTER (WHERE o.id IS NOT NULL), '{}') AS opciones
       FROM cartillas.registros r JOIN cartillas.secciones s ON s.version_id = r.version_id JOIN cartillas.campos f ON f.seccion_id = s.id
       LEFT JOIN cartillas.opciones_campo o ON o.campo_id = f.id AND o.activo WHERE r.id = $1 AND f.activo GROUP BY f.id`, [registroId]);
     if (!campos.rows.length) {
@@ -157,6 +248,8 @@ app.put('/api/cartillas/registros/:registroId/respuestas', autenticar, permitir(
       const { campoId, valor } = item as { campoId?: unknown; valor?: unknown };
       const campo = typeof campoId === 'number' ? permitidos.get(campoId) : undefined;
       if (!campo || !tiposCampo.includes(campo.tipo) || !respuestaValida(campo.tipo, valor, campo.opciones)) return response.status(400).json({ error: 'Respuesta no válida para el campo indicado' });
+      const reglas = campo.configuracion?.reglas as { requiereObservacionNoConforme?: boolean } | undefined;
+      if (campo.tipo === 'tabla' && reglas?.requiereObservacionNoConforme && Array.isArray(valor) && valor.some((fila) => (fila?.resultado === 'no_conforme' || fila?.evaluacion === 'no_conforme') && (typeof fila.observacion !== 'string' || !fila.observacion.trim()))) return response.status(422).json({ error: 'Ingrese una observación para cada resultado No conforme' });
     }
     const client = await pool.connect();
     try {

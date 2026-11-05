@@ -4,6 +4,7 @@ import './styles.css';
 import { FormularioPage } from './FormularioPage';
 import { MantenimientoCartillasPage } from './MantenimientoCartillasPage';
 import { LoginPage } from './LoginPage';
+import linea1Logo from '../../linea1logo.png';
 
 type Plantilla = {
   id: number;
@@ -58,20 +59,24 @@ function CartillasPage() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand"><span className="brand-mark">U</span><span>UNNA</span></div>
+        <div className="brand"><img className="linea1-logo" src={linea1Logo} alt="Línea 1" /><span><b>Metro Lima</b><small>Gestión de cartillas</small></span></div>
         <nav aria-label="Navegación principal">
-          <a href="/cartillas" className="nav-link active">Cartillas</a>
+          <p className="nav-label">Mantenimiento</p>
+          <a href="/cartillas" className="nav-link active"><span>▣</span> Cartillas</a>
         </nav>
-        <div className="sidebar-footer">Plataforma de mantenimiento</div>
+        <div className="sidebar-footer"><span className="avatar">AD</span><span><b>Administrador</b><small>Sesión activa</small></span></div>
       </aside>
       <main className="content">
+        <div className="breadcrumbs">UNNA <span>›</span> Mantenimiento <span>›</span> <b>Catálogo de cartillas</b></div>
         <header className="page-header">
-          <div><p className="eyebrow">Mantenimiento</p><h1>Catálogo de cartillas</h1><p className="subtitle">Seleccione una plantilla para consultar su versión disponible.</p></div>
+          <div className="title-group"><span className="title-icon">▤</span><div><p className="eyebrow">Mantenimiento</p><h1>Catálogo de cartillas</h1><p className="subtitle">Gestiona y selecciona las plantillas de cartillas de mantenimiento.</p></div></div>
+          <button className="new-button" type="button" onClick={() => setAviso('La creación de nuevas cartillas estará disponible próximamente.')}>＋ Nueva cartilla</button>
         </header>
         <section className="filters" aria-label="Filtros de cartillas">
-          <label className="search"><span className="sr-only">Buscar cartilla</span><input value={busqueda} onChange={(event) => setBusqueda(event.target.value)} placeholder="Buscar por nombre o código" /></label>
+          <label className="search"><span className="search-icon">⌕</span><span className="sr-only">Buscar cartilla</span><input value={busqueda} onChange={(event) => setBusqueda(event.target.value)} placeholder="Buscar por nombre, código o palabra clave…" /></label>
           <label className="category-filter"><span className="sr-only">Categoría</span><select value={categoria} onChange={(event) => setCategoria(event.target.value)}><option value="todas">Todas las categorías</option>{categorias.map((nombre) => <option key={nombre} value={nombre}>{nombre}</option>)}</select></label>
         </section>
+        {categorias.length > 1 && <div className="category-tabs"><button className={categoria === 'todas' ? 'active' : ''} onClick={() => setCategoria('todas')}>▱ Todas <span>{plantillas.length}</span></button>{categorias.map((nombre) => <button key={nombre} className={categoria === nombre ? 'active' : ''} onClick={() => setCategoria(nombre)}>◇ {nombre} <span>{plantillas.filter((plantilla) => plantilla.categoria === nombre).length}</span></button>)}</div>}
         {aviso && <p className="notice" role="status">{aviso}</p>}
         {cargando && <p className="state">Cargando catálogo…</p>}
         {error && <p className="state error">No fue posible cargar el catálogo. Verifique que la API esté disponible.</p>}
@@ -81,8 +86,8 @@ function CartillasPage() {
             <h2 id={`categoria-${grupo.nombre}`}>{grupo.nombre}<span>{grupo.plantillas.length}</span></h2>
             <div className="cards">
               {grupo.plantillas.map((plantilla) => <article className="card" key={plantilla.version_id}>
-                <div><p className="code">{plantilla.codigo}</p><h3>{plantilla.nombre}</h3><p className="version">Versión {plantilla.version}</p></div>
-                <div className="card-actions"><span className={`status ${plantilla.estado}`}>{estadoEtiqueta[plantilla.estado] ?? plantilla.estado}</span><a className="open-button" href={`/cartillas/${plantilla.id}/versiones/${plantilla.version_id}`}>Abrir</a></div>
+                <div><div className="card-code"><span>▣</span><p className="code">{plantilla.codigo}</p><button aria-label={`Opciones de ${plantilla.nombre}`}>•••</button></div><h3>{plantilla.nombre}</h3><p className="version">Versión {plantilla.version}</p></div>
+                <div className="card-actions"><span className={`status ${plantilla.estado}`}>{estadoEtiqueta[plantilla.estado] ?? plantilla.estado}</span><a className="open-button" href={`/cartillas/${plantilla.id}/versiones/${plantilla.version_id}`}>Abrir <span>→</span></a></div>
               </article>)}
             </div>
           </section>
